@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.PorterDuff;
 import android.graphics.Shader;
@@ -27,6 +28,9 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
@@ -56,7 +60,7 @@ import java.util.Map;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
-    static final int BEIGE = 0xFFFFDA9A, GREEN = 0xFF6FFF95;
+    static final int BEIGE = 0xFFEEE8AA, GREEN = 0xFF6FFF95;
     // у каждого раздела свой цвет меню и свой цвет переключателя
     static final int ORI_M = 0xFF4DD6FF, ORI_S = 0xFFB388FF;     // ориентация: голубой / фиолетовый
     static final int MIR_M = 0xFFFF7AC6, MIR_S = 0xFFFFB86B;     // зеркало: розовый / оранжевый
@@ -114,7 +118,7 @@ public class MainActivity extends Activity {
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(10), dp(30), dp(10), dp(6));
+        col.setPadding(dp(10), dp(36), dp(10), dp(6));
         final TextView logo = new TextView(this);
         logo.setText("RotatorOS"); logo.setTextSize(28); logo.setTypeface(Typeface.DEFAULT_BOLD);
         logo.setPadding(dp(4), 0, 0, 0);
@@ -130,7 +134,7 @@ public class MainActivity extends Activity {
         col.addView(tag, new LinearLayout.LayoutParams(-2, -2));
         search = new EditText(this);
         search.setHint("Поиск приложений");
-        search.setHintTextColor(0x99FFDA9A);
+        search.setHintTextColor(0x99EEE8AA);
         search.setTextColor(BEIGE);
         search.setSingleLine(true);
         search.setBackground(shape(0x99000000, a(BEIGE, 0x66), 1.5f, 14));
@@ -168,6 +172,25 @@ public class MainActivity extends Activity {
         col.addView(box, lp);
         root.addView(col, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+        // прозрачные системные панели: фон приложения виден под строкой состояния и нижней панелью, значки светлые
+        Window w = getWindow();
+        w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 29) w.setNavigationBarContrastEnforced(false);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            WindowInsetsController wc = w.getInsetsController();
+            if (wc != null) wc.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS | WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+        } else {
+            w.getDecorView().setSystemUiVisibility(0x100 | 0x200 | 0x400);   // LAYOUT_STABLE | HIDE_NAVIGATION | FULLSCREEN (раскладка под панелями)
+        }
+        final LinearLayout colF = col;
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            colF.setPadding(dp(10), ins.getSystemWindowInsetTop() + dp(8), dp(10), ins.getSystemWindowInsetBottom() + dp(6));
+            return ins;
+        });
+        root.requestApplyInsets();
         refreshHeader();
     }
 
@@ -233,7 +256,7 @@ public class MainActivity extends Activity {
         LinearLayout r = new LinearLayout(this);
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setPadding(dp(8), dp(8), dp(24), dp(8));
-        r.setBackground(act ? shape(0x66081A10, a(GREEN, 0x99), 1.5f, 14) : shape(0x66000000, 0x22FFDA9A, 1f, 14));
+        r.setBackground(act ? shape(0x66081A10, a(GREEN, 0x99), 1.5f, 14) : shape(0x66000000, 0x22EEE8AA, 1f, 14));
         final CheckBox cb = new CheckBox(this);
         cb.setChecked(en(k));
         cb.setFocusable(false);
@@ -348,7 +371,7 @@ public class MainActivity extends Activity {
         br.addView(link("Экспорт", ORI_M, v -> exportCfg()));
         br.addView(link("Импорт", STA_S, v -> importCfg()));
         info = new TextView(this);
-        info.setTextColor(0xAAFFDA9A); info.setTextSize(11);
+        info.setTextColor(0xAAEEE8AA); info.setTextSize(11);
         br.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
         h.addView(br);
         return h;
