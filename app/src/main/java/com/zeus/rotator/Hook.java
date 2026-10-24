@@ -1,6 +1,7 @@
 package com.zeus.rotator;
 
 import android.os.Build;
+import android.util.Log;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
@@ -23,7 +24,7 @@ public class Hook implements IXposedHookLoadPackage {
     static XSharedPreferences prefs;
     static long last;
     static String PKG = "";
-    static int logCount;
+    static int logCount, applyLog, errLog, trackLog;
     static final Map<View, ViewTreeObserver> reg = Collections.synchronizedMap(new WeakHashMap<View, ViewTreeObserver>());
     static final Map<View, String> sig = Collections.synchronizedMap(new WeakHashMap<View, String>());
     static final Set<String> forced = Collections.synchronizedSet(new HashSet<String>());
@@ -85,6 +86,13 @@ public class Hook implements IXposedHookLoadPackage {
                     }
                 });
         } catch (Throwable t) { log("video hook failed: " + t); }
+        XC_MethodHook att = new XC_MethodHook() {
+            protected void afterHookedMethod(MethodHookParam m) { track((View) m.thisObject); }
+        };
+        try { XposedHelpers.findAndHookMethod(SurfaceView.class, "onAttachedToWindow", att); log("hook SurfaceView.onAttachedToWindow OK"); }
+        catch (Throwable t) { log("hook SurfaceView.onAttachedToWindow FAIL: " + t); }
+        try { XposedHelpers.findAndHookMethod(TextureView.class, "onAttachedToWindow", att); log("hook TextureView.onAttachedToWindow OK"); }
+        catch (Throwable t) { log("hook TextureView.onAttachedToWindow FAIL: " + t); }
     }
 
     // Подгонка пересчитывается перед каждой отрисовкой кадра: это лечит «залипший» масштаб после поворота
@@ -93,6 +101,7 @@ public class Hook implements IXposedHookLoadPackage {
             ViewTreeObserver vto = v.getViewTreeObserver();
             if (!vto.isAlive() || reg.get(v) == vto) return;
             reg.put(v, vto);
+            if (trackLog++ < 15) log("TRACK " + v.getClass().getName() + " " + v.getWidth() + "x" + v.getHeight() + " attached=" + v.isAttachedToWindow());
             vto.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                 public boolean onPreDraw() { if (v.isAttachedToWindow()) apply(v); return true; }
             });
@@ -151,6 +160,16 @@ public class Hook implements IXposedHookLoadPackage {
                     }
                 }
             }
+            if (applyLog++ < 10) {
+                String fi;
+                try {
+                    java.io.File f = (java.io.File) sp.getClass().getMethod("getFile").invoke(sp);
+                    fi = f + " exists=" + f.exists() + " read=" + f.canRead() + " len=" + f.length();
+                } catch (Throwable t) { fi = "err " + t; }
+                log("APPLY#" + applyLog + " e=" + en + " mode=" + mode + " debug=" + sp.getBoolean("debug", false)
+                    + " land=" + sp.getBoolean("l_" + PKG, true) + " root=" + W + "x" + H + " view=" + w + "x" + h
+                    + " why=" + why + " scale=" + sx + "," + sy + " keys=" + (sp.getAll() == null ? -1 : sp.getAll().size()) + " file=" + fi);
+            }
             boolean diff = Math.abs(v.getScaleX() - sx) > 0.001f || Math.abs(v.getScaleY() - sy) > 0.001f
                 || Math.abs(v.getTranslationX() - tx) > 0.5f || Math.abs(v.getTranslationY()) > 0.5f;
             if (diff) {
@@ -163,7 +182,7 @@ public class Hook implements IXposedHookLoadPackage {
                 String s = w + "x" + h + "|" + W + "x" + H + "|" + Math.round(sx * 100) + "," + Math.round(sy * 100) + "|" + why;
                 if (!s.equals(sig.get(v))) { sig.put(v, s); dump(v, why, sx, sy, tx, W, H); }
             }
-        } catch (Throwable t) { }
+        } catch (Throwable t) { if (errLog++ < 5) log("apply error: " + Log.getStackTraceString(t)); }
     }
 
     static void unclip(View v) {
