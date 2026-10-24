@@ -2,6 +2,7 @@ package com.zeus.rotator;
 
 import android.app.Activity;
 import android.os.Build;
+import android.os.Handler;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -21,6 +22,8 @@ public class Hook implements IXposedHookLoadPackage {
     static long last;
     static String PKG = "";
     static boolean appHooked;
+    static volatile boolean isSystem;
+    static volatile Object dc;      // основной дисплей (для мгновенного применения настроек)
     static final Set<String> once = Collections.synchronizedSet(new HashSet<String>());
 
     static synchronized XSharedPreferences p() {
@@ -31,16 +34,43 @@ public class Hook implements IXposedHookLoadPackage {
             last = n;
         } else if (n - last > 2000) {
             last = n;
-            if (prefs.hasFileChanged()) prefs.reload();
+            if (prefs.hasFileChanged()) { prefs.reload(); if (isSystem) refresh(); }
         }
         return prefs;
+    }
+
+    static boolean callNoArg(Object o, String name) {
+        for (Class<?> c = o.getClass(); c != null; c = c.getSuperclass()) {
+            try { Method m = c.getDeclaredMethod(name); m.setAccessible(true); m.invoke(o); return true; }
+            catch (NoSuchMethodException e) { /* выше по иерархии */ }
+            catch (Throwable t) { return false; }
+        }
+        return false;
+    }
+
+    // Просим систему заново посчитать ориентацию, чтобы новые настройки применились сразу, без перезагрузки
+    static void refresh() {
+        try {
+            final Object d = dc;
+            if (d == null) return;
+            Object wms = fld(d, "mWmService");
+            final Object lock = fld(wms, "mGlobalLock");
+            Object h = fld(wms, "mH");
+            if (lock == null || !(h instanceof Handler)) return;
+            ((Handler) h).post(new Runnable() {
+                public void run() {
+                    try { synchronized (lock) { callNoArg(d, "updateOrientation"); } } catch (Throwable t) { }
+                }
+            });
+        } catch (Throwable t) { }
     }
 
     static void log(String s) { XposedBridge.log("RotatorOS: " + s); }
 
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
         if (lp.packageName.equals("com.zeus.rotator")) return;
-        if (lp.packageName.equals("android")) { hookSystem(lp); return; }
+        if (lp.packageName.equals("com.android.systemui")) return;   // строку состояния и SystemUI не трогаем: там работают другие модули
+        if (lp.packageName.equals("android")) { isSystem = true; hookSystem(lp); return; }
         // в процессе приложения LSPosed вызывает нас и для gms/webview: имя «своего» пакета не затираем
         if (lp.isFirstApplication || PKG.isEmpty()) PKG = lp.packageName;
         if (!appHooked) { appHooked = true; hookApp(); }
@@ -145,6 +175,10 @@ public class Hook implements IXposedHookLoadPackage {
         tryHook("com.android.server.wm.DisplayContent", cl, "getOrientation", new XC_MethodHook() {
             protected void afterHookedMethod(MethodHookParam m) {
                 try {
+                    if (dc == null) {
+                        Object id = fld(m.thisObject, "mDisplayId");
+                        if (id instanceof Integer && ((Integer) id) == 0) dc = m.thisObject;
+                    }
                     if (!p().getBoolean("lock_on", false)) return;
                     int v = p().getInt("lock_o", -99);
                     if (v == -99 || !callBool(m.thisObject, "isKeyguardLocked")) return;
