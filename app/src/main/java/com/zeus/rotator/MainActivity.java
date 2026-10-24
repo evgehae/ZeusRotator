@@ -28,7 +28,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import java.util.ArrayList;
@@ -42,7 +41,6 @@ public class MainActivity extends Activity {
         "Обратный портрет (зеркальный)", "Обратный ландшафт (зеркальный)", "Сенсор: только ландшафт", "Сенсор: только портрет"};
     static final String[] SN = {"по умолчанию", "Авто", "Портрет", "Ландшафт", "Обр. портрет", "Обр. ландшафт", "Сенсор ландшафт", "Сенсор портрет"};
     static final int[] OV = {-99, 10, 1, 0, 9, 8, 6, 7};
-    static final String[] VN = {"Выкл", "Заполнить (обрезка)", "Растянуть (искажает!)", "Компромисс (%)", "Умный (макс. обрезка %)"};
     static final int ORANGE = 0xFFFFDA9A, GREEN = 0xFF6FFF95, DIM = 0xFF8A8A8A;
 
     SharedPreferences sp;
@@ -96,14 +94,6 @@ public class MainActivity extends Activity {
         });
         col.addView(search, new LinearLayout.LayoutParams(-1, -2));
 
-        CheckBox dbg = new CheckBox(this);
-        dbg.setText("Подробный лог (для диагностики)");
-        dbg.setTextColor(DIM);
-        dbg.setTextSize(13);
-        dbg.setChecked(sp.getBoolean("debug", false));
-        dbg.setOnCheckedChangeListener((cb, c) -> sp.edit().putBoolean("debug", c).apply());
-        col.addView(dbg, new LinearLayout.LayoutParams(-2, -2));
-
         FrameLayout box = new FrameLayout(this);
         lv = new ListView(this);
         lv.setDivider(new ColorDrawable(0x22FFFFFF));
@@ -123,7 +113,7 @@ public class MainActivity extends Activity {
         box.addView(lv, new FrameLayout.LayoutParams(-1, -1));
         box.addView(new FastBar(lv), new FrameLayout.LayoutParams(dp(130), -1, Gravity.END));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        lp.topMargin = dp(4);
+        lp.topMargin = dp(8);
         col.addView(box, lp);
         root.addView(col, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
@@ -165,7 +155,11 @@ public class MainActivity extends Activity {
         final CheckBox cb = new CheckBox(this);
         cb.setChecked(en(k));
         cb.setFocusable(false);
-        cb.setOnClickListener(v -> { sp.edit().putBoolean("e_" + k, cb.isChecked()).apply(); filter(query); });
+        cb.setOnClickListener(v -> {
+            sp.edit().putBoolean("e_" + k, cb.isChecked()).apply();
+            filter(query);
+            if (cb.isChecked() && sp.getInt("o_" + k, -99) == -99) edit(k, names.get(k));  // режим ещё не выбран
+        });
         r.addView(cb);
         ImageView ic = new ImageView(this);
         ic.setImageDrawable(a.loadIcon(pm));
@@ -182,68 +176,33 @@ public class MainActivity extends Activity {
         return r;
     }
 
-    // Поворот — кремовым, видео — зелёным, неактивное — тусклым серым
+    // Выбранный поворот — кремовым, неактивное — тусклым серым
     SpannableStringBuilder summary(String k) {
-        boolean on = en(k);
         int oi = idx(sp.getInt("o_" + k, -99));
-        int v = sp.getInt("v_" + k, 0), pc = sp.getInt("p_" + k, 50);
-        SpannableStringBuilder b = new SpannableStringBuilder();
-        int s = b.length();
-        b.append("Поворот: ").append(SN[oi]);
-        b.setSpan(new ForegroundColorSpan(on && oi > 0 ? ORANGE : DIM), s, b.length(), 0);
-        b.append("   ");
-        String vt = v == 0 ? "выкл" : v == 1 ? "Заполнить" : v == 2 ? "Растянуть" : v == 3 ? "Компромисс " + pc + "%" : "Умный, обрезка до " + pc + "%";
-        s = b.length();
-        b.append("Видео: ").append(vt);
-        b.setSpan(new ForegroundColorSpan(on && v > 0 ? GREEN : DIM), s, b.length(), 0);
+        SpannableStringBuilder b = new SpannableStringBuilder("Поворот: " + SN[oi]);
+        b.setSpan(new ForegroundColorSpan(en(k) && oi > 0 ? ORANGE : DIM), 0, b.length(), 0);
         return b;
     }
 
     int idx(int val) { for (int i = 0; i < OV.length; i++) if (OV[i] == val) return i; return 0; }
 
-    Spinner spin(String[] items, int sel) {
-        Spinner s = new Spinner(this);
-        s.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, items));
-        s.setSelection(sel);
-        return s;
-    }
-
-    TextView label(String t) {
-        TextView v = new TextView(this);
-        v.setText(t); v.setPadding(0, dp(12), 0, 0);
-        return v;
-    }
-
     void edit(final String k, String name) {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(20), dp(8), dp(20), 0);
-        final Spinner so = spin(ON, idx(sp.getInt("o_" + k, -99)));
-        final Spinner sv = spin(VN, sp.getInt("v_" + k, 0));
-        final TextView pl = label("Параметр: " + sp.getInt("p_" + k, 50) + "%");
-        final SeekBar sb = new SeekBar(this);
-        sb.setMax(100); sb.setProgress(sp.getInt("p_" + k, 50));
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar s, int p, boolean u) { pl.setText("Параметр: " + p + "%"); }
-            public void onStartTrackingTouch(SeekBar s) {}
-            public void onStopTrackingTouch(SeekBar s) {}
-        });
-        TextView hint = new TextView(this);
-        hint.setText("Компромисс: 0% = как есть, 100% = заполнить экран.\nУмный: масштаб растёт, пока обрезка кадра не превысит этот процент.");
-        hint.setTextSize(12); hint.setTextColor(DIM);
-        final CheckBox lc = new CheckBox(this);
-        lc.setText("Подгонять видео только в ландшафте");
-        lc.setChecked(sp.getBoolean("l_" + k, true));
-        l.addView(label("Ориентация экрана")); l.addView(so);
-        l.addView(label("Подгонка видео")); l.addView(sv);
-        l.addView(pl); l.addView(sb); l.addView(hint); l.addView(lc);
+        l.setPadding(dp(20), dp(12), dp(20), 0);
+        final Spinner so = new Spinner(this);
+        so.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ON));
+        so.setSelection(idx(sp.getInt("o_" + k, -99)));
+        TextView t = new TextView(this);
+        t.setText("Ориентация экрана для этого приложения");
+        l.addView(t); l.addView(so);
         new AlertDialog.Builder(this).setTitle(name).setView(l)
             .setPositiveButton("Сохранить", (dg, w) -> {
-                int o = so.getSelectedItemPosition(), v = sv.getSelectedItemPosition();
-                sp.edit().putInt("o_" + k, OV[o]).putInt("v_" + k, v).putInt("p_" + k, sb.getProgress())
-                    .putBoolean("l_" + k, lc.isChecked()).putBoolean("e_" + k, o > 0 || v > 0).apply();
+                int o = so.getSelectedItemPosition();
+                sp.edit().putInt("o_" + k, OV[o]).putBoolean("e_" + k, o > 0).apply();
                 filter(query);
-            }).setNegativeButton("Отмена", null).show();
+            })
+            .setNegativeButton("Отмена", (dg, w) -> filter(query)).show();
     }
 
     String letterAt(int i) {
