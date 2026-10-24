@@ -44,10 +44,14 @@ public class Hook implements IXposedHookLoadPackage {
 
     static void log(String s) { if (logCount++ < 800) XposedBridge.log("ZR[" + PKG + "] " + s); }
 
+    static boolean videoHooked;
+
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
-        PKG = lp.packageName;
-        if (PKG.equals("com.zeus.rotator")) return;
-        if (PKG.equals("android")) hookSystem(lp); else hookVideo();
+        if (lp.packageName.equals("com.zeus.rotator")) return;
+        // В процессе приложения LSPosed вызывает нас ещё и для gms/webview: имя «своего» пакета не затираем
+        if (lp.isFirstApplication || PKG.isEmpty()) PKG = lp.packageName;
+        if (lp.packageName.equals("android")) hookSystem(lp);
+        else if (!videoHooked) { videoHooked = true; hookVideo(); }
     }
 
     // ---------- Поворот: system_server ----------
